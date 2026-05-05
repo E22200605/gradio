@@ -8,6 +8,7 @@ const port = parseInt(process.env.PORT || "7860", 10);
 
 const pythonHost = process.env.GRADIO_PYTHON_HOST || "127.0.0.1";
 const pythonPort = parseInt(process.env.GRADIO_PYTHON_PORT || "7861", 10);
+const serverModeEnabled = process.env.GRADIO_SERVER_MODE_ENABLED
 
 const staticWorkerPorts = process.env.GRADIO_STATIC_WORKER_PORTS
 	? process.env.GRADIO_STATIC_WORKER_PORTS.split(",")
@@ -77,7 +78,7 @@ proxy.on("error", (err, req, res) => {
 
 const server = http.createServer((req, res) => {
 	const url = req.url || "/";
-	const path = url.split("?")[0];
+ 	const path = url.split("?")[0];
 
 	// 1. Static routes -> workers (round-robin) or Python fallback.
 	//    Checked FIRST so /gradio_api/upload isn't caught by the
@@ -98,7 +99,8 @@ const server = http.createServer((req, res) => {
 	}
 
 	// 2. Python routes (API, config, auth, etc.)
-	if (matchesPrefix(path, PYTHON_ROUTE_PREFIXES)) {
+	if (matchesPrefix(path, PYTHON_ROUTE_PREFIXES) || serverModeEnabled) {
+		console.log(`[node-proxy] ${path} -> ${pythonTarget}`)
 		proxy.web(req, res, { target: pythonTarget });
 		return;
 	}

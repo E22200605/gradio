@@ -2806,9 +2806,14 @@ Received inputs:
                         static_worker_ports=static_worker_ports,
                     )
                 )
-                # Python server must use the internal port
-                server_port = python_internal_port
-                self._node_is_proxy = True
+                # Only use the proxy architecture if Node actually started
+                if self.node_process is not None and self.node_port is not None:
+                    server_port = python_internal_port
+                    self._node_is_proxy = True
+                else:
+                    # Node failed to start — fall back to Python as the
+                    # front server on the original user port.
+                    static_worker_ports = []
         else:
             self.node_server_name = self.node_port = self.node_process = None
 
