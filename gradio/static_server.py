@@ -7,7 +7,6 @@ to free the main Gradio server for queue/SSE/state work.
 
 from __future__ import annotations
 
-import logging
 import math
 import multiprocessing
 import time
@@ -31,8 +30,6 @@ from gradio.utils import (
     DeveloperPath,
     UserProvidedPath,
 )
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -165,10 +162,6 @@ class StaticWorkerPool:
                         break
                 except Exception:
                     time.sleep(0.1)
-
-        logger.info(
-            f"StaticWorkerPool: {self.num_workers} workers on ports {self.ports}"
-        )
 
     def get_next_url(self) -> str:
         """Round-robin to the next static worker."""
