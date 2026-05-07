@@ -16,13 +16,15 @@
 	import type { PortType, WFNode, WFEdge, NodeStatus } from "./workflow-types";
 	import { executeWorkflow } from "./workflow-executor";
 	import { LIBRARY } from "./node-library";
-	import { publishToHub } from "./workflow-to-space";
 	import type { Workflow } from "./workflow-types";
 	import { onMount } from "svelte";
 
 	let { server = {} }: { server?: Record<string, any> } = $props();
 
 	let isLoggedIn = $state(false);
+	let hfToken = $state(
+		typeof localStorage !== "undefined" ? localStorage.getItem("hf_token") ?? "" : ""
+	);
 
 	onMount(async () => {
 		if (server?.get_token) {
@@ -32,6 +34,17 @@
 			} catch { /* ignore */ }
 		}
 	});
+
+	function saveToken(token: string) {
+		hfToken = token.trim();
+		if (typeof localStorage !== "undefined") {
+			if (hfToken) {
+				localStorage.setItem("hf_token", hfToken);
+			} else {
+				localStorage.removeItem("hf_token");
+			}
+		}
+	}
 
 	const TEMPLATES: { name: string; desc: string; build: () => Workflow }[] = [
 		{
@@ -394,11 +407,6 @@
 	let selectedNodeId: string | null = $state(null);
 	let showTemplates = $state(false);
 	let showShortcuts = $state(false);
-	let showDeploy = $state(false);
-	let deployToken = $state("");
-	let deployStatus = $state("");
-	let deploying = $state(false);
-	let deployUrl = $state("");
 	interface WfToast {
 		id: number;
 		message: string;
@@ -616,14 +624,29 @@
 
 		// Check login status — warn if running GPU spaces without a token
 		const hasGpuSpaces = $workflow.nodes.some((n) => n.source === "space" && n.space_id);
-		if (hasGpuSpaces && server?.get_token) {
-			try {
-				const token = await server.get_token();
-				if (!token) {
-					showToast("Running as guest — GPU Spaces may hit quota limits. Log in for your own compute.", 5000, "warning");
-				}
-			} catch { /* ignore */ }
+		let hasToken = false;
+		if (hasGpuSpaces) {
+			// Check for manual token or OAuth
+			if (hfToken) {
+				hasToken = true;
+			} else if (server?.get_token) {
+				try {
+					const token = await server.get_token();
+					if (token) {
+						hasToken = true;
+					}
+				} catch { /* ignore */ }
+			}
+			if (!hasToken) {
+				showToast("Running as guest — GPU Spaces may hit quota limits. Add token in settings for your own compute.", 5000, "warning");
+			}
 		}
+
+		// Wrap server.call_space to include the stored token
+		const callSpaceWithToken = server?.call_space ? async (spaceId: string, endpoint: string, argsJson: string) => {
+			// Pass token as 4th element in the data array
+			return server.call_space([spaceId, endpoint, argsJson, hfToken || ""]);
+		} : undefined;
 
 		await executeWorkflow(
 			$workflow,
@@ -645,7 +668,7 @@
 				updateNodeData(nodeId, portId, value);
 			},
 			abortController.signal,
-			server?.call_space
+			callSpaceWithToken
 		);
 
 		running = false;
@@ -892,25 +915,6 @@
 		showToast("Exported workflow.json");
 	}
 
-	async function deployToHub(): Promise<void> {
-		if (!deployToken.trim()) return;
-		deploying = true;
-		deployStatus = "";
-		deployUrl = "";
-		try {
-			const url = await publishToHub(
-				$workflow,
-				deployToken.trim(),
-				(msg) => { deployStatus = msg; }
-			);
-			deployUrl = url;
-			deployStatus = "Deployed!";
-		} catch (err) {
-			deployStatus = `Error: ${err instanceof Error ? err.message : String(err)}`;
-		} finally {
-			deploying = false;
-		}
-	}
 
 	function importWorkflow(): void {
 		const input = document.createElement("input");
@@ -979,6 +983,14 @@
 					Sign in with HF
 				</a>
 			{/if}
+			<input
+				class="toolbar-token-input"
+				type="password"
+				placeholder="Paste HF token (hf_...)"
+				value={hfToken}
+				onchange={(e) => saveToken(e.currentTarget.value)}
+				title="HuggingFace token for GPU access"
+			/>
 			<div class="toolbar-dropdown-wrap">
 				<button
 					class="tool-btn"
@@ -1016,14 +1028,6 @@
 				title="Import workflow.json"
 			>
 				Import
-			</button>
-			<button
-				class="tool-btn deploy-btn"
-				onclick={() => { showDeploy = true; }}
-				disabled={!hasTransforms}
-				title="Deploy as HuggingFace Space"
-			>
-				Deploy to HF
 			</button>
 			<div class="toolbar-divider"></div>
 			<button class="tool-btn" onclick={autoLayout} title="Auto-arrange nodes">
@@ -1187,53 +1191,7 @@
 		</div>
 	{/if}
 
-	{#if showDeploy}
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="deploy-overlay" onclick={() => { if (!deploying) showDeploy = false; }}>
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="deploy-modal" onclick={(e) => e.stopPropagation()}>
-				<div class="deploy-header">
-					<span class="deploy-title">Deploy to HuggingFace</span>
-					{#if !deploying}
-						<button class="deploy-close" onclick={() => showDeploy = false}>&times;</button>
-					{/if}
-				</div>
-				<p class="deploy-desc">
-					Publish this workflow as a Gradio Space on HuggingFace.
-				</p>
-				{#if deployUrl}
-					<div class="deploy-success">
-						<span>Deployed!</span>
-						<a href={deployUrl} target="_blank" rel="noopener">{deployUrl}</a>
-					</div>
-				{:else}
-					<label class="deploy-label">
-						HF Token
-						<input
-							class="deploy-input"
-							type="password"
-							placeholder="hf_..."
-							bind:value={deployToken}
-							disabled={deploying}
-						/>
-					</label>
-					<p class="deploy-hint">
-						Get a write token from <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co/settings/tokens</a>
-					</p>
-					{#if deployStatus}
-						<div class="deploy-status">{deployStatus}</div>
-					{/if}
-					<button
-						class="deploy-submit"
-						onclick={deployToHub}
-						disabled={deploying || !deployToken.trim()}
-					>
-						{deploying ? deployStatus || "Deploying..." : "Deploy as Space"}
-					</button>
-				{/if}
-			</div>
-		</div>
-	{/if}
+
 </div>
 
 <style>
@@ -1358,6 +1316,32 @@
 
 	.tool-icon {
 		font-size: 10px;
+	}
+
+	.toolbar-token-input {
+		font-family: "JetBrains Mono", monospace;
+		font-size: 11px;
+		padding: 6px 10px;
+		border: 1px solid #1e1f2a;
+		border-radius: 6px;
+		background: #0c0d10;
+		color: #6b6e78;
+		outline: none;
+		transition:
+			background 0.15s,
+			color 0.15s,
+			border-color 0.15s;
+	}
+
+	.toolbar-token-input::placeholder {
+		color: #4a4d57;
+	}
+
+	.toolbar-token-input:focus {
+		background: #16171f;
+		color: #a0a2ae;
+		border-color: #f5a623;
+		box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.1);
 	}
 
 	.toolbar-divider {
@@ -1726,150 +1710,5 @@
 		z-index: 20;
 		white-space: nowrap;
 	}
-	/* ─── Deploy Modal ─── */
-	.deploy-btn {
-		color: #f5a623 !important;
-	}
 
-	.deploy-overlay {
-		position: absolute;
-		inset: 0;
-		background: rgba(0, 0, 0, 0.5);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 50;
-	}
-
-	.deploy-modal {
-		background: #16171f;
-		border: 1px solid #2a2b36;
-		border-radius: 12px;
-		padding: 24px;
-		width: 400px;
-		max-width: 90%;
-		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-	}
-
-	.deploy-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 12px;
-	}
-
-	.deploy-title {
-		font-size: 16px;
-		font-weight: 700;
-		color: #d5d6de;
-	}
-
-	.deploy-close {
-		border: none;
-		background: transparent;
-		color: #5c5e6a;
-		font-size: 18px;
-		cursor: pointer;
-		padding: 4px;
-	}
-
-	.deploy-close:hover {
-		color: #a0a2ae;
-	}
-
-	.deploy-desc {
-		font-size: 12px;
-		color: #8b8d98;
-		margin: 0 0 16px;
-	}
-
-	.deploy-label {
-		display: block;
-		font-size: 11px;
-		font-weight: 600;
-		color: #8b8d98;
-		margin-bottom: 12px;
-	}
-
-	.deploy-input {
-		display: block;
-		width: 100%;
-		margin-top: 6px;
-		font-family: "JetBrains Mono", monospace;
-		font-size: 12px;
-		padding: 8px 12px;
-		border: 1px solid #2a2b36;
-		border-radius: 6px;
-		background: #0c0d10;
-		color: #c8c9d2;
-		outline: none;
-		box-sizing: border-box;
-	}
-
-	.deploy-input:focus {
-		border-color: #f5a623;
-	}
-
-	.deploy-hint {
-		font-size: 10px;
-		color: #5c5e6a;
-		margin: 0 0 16px;
-	}
-
-	.deploy-hint a {
-		color: #8b83e8;
-	}
-
-	.deploy-status {
-		font-family: "JetBrains Mono", monospace;
-		font-size: 10px;
-		color: #8b8d98;
-		margin-bottom: 12px;
-	}
-
-	.deploy-submit {
-		width: 100%;
-		padding: 10px;
-		border: none;
-		border-radius: 8px;
-		background: linear-gradient(135deg, #f97316, #ea580c);
-		color: #fff;
-		font-family: "Manrope", sans-serif;
-		font-size: 13px;
-		font-weight: 700;
-		cursor: pointer;
-		transition: opacity 0.15s;
-	}
-
-	.deploy-submit:hover:not(:disabled) {
-		opacity: 0.9;
-	}
-
-	.deploy-submit:disabled {
-		opacity: 0.4;
-		cursor: default;
-	}
-
-	.deploy-success {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding: 16px;
-		border: 1px solid rgba(79, 209, 165, 0.3);
-		border-radius: 8px;
-		background: rgba(79, 209, 165, 0.06);
-	}
-
-	.deploy-success span {
-		font-size: 14px;
-		font-weight: 700;
-		color: #4fd1a5;
-	}
-
-	.deploy-success a {
-		font-family: "JetBrains Mono", monospace;
-		font-size: 11px;
-		color: #8b83e8;
-		word-break: break-all;
-	}
 </style>

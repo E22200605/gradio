@@ -1,5 +1,5 @@
 import subprocess, sys
-subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', './src/'])
+subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-q', '-e', '.'])
 
 import gradio as gr
 from gradio.oauth import OAuthToken
@@ -43,8 +43,10 @@ def call_space(data, token: Optional[OAuthToken] = None) -> str:
         space_id = data[0]
         endpoint = data[1] if len(data) > 1 else None
         args_json = data[2] if len(data) > 2 else "[]"
+        manual_token = data[3] if len(data) > 3 else None
 
-        hf_token = token.token if token else None
+        # Use manual token if provided, otherwise fall back to OAuth token
+        hf_token = manual_token or (token.token if token else None)
         client = Client(space_id, token=hf_token)
         args = json.loads(args_json)
 
