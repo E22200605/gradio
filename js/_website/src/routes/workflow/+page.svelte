@@ -20,7 +20,7 @@
 
 <main class="fixed inset-0 z-50 bg-white dark:bg-neutral-900">
 	<iframe
-		src="https://gradio-workflow.hf.space"
+		src="https://hmb-workflow.hf.space"
 		title="Gradio Workflow"
 		class="w-full h-full border-0 block"
 		allow="accelerometer; camera; clipboard-read; clipboard-write; encrypted-media; fullscreen; geolocation; gyroscope; microphone; midi; payment"
