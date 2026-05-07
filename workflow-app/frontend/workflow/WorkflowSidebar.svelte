@@ -194,8 +194,10 @@
 
 <aside class="sidebar" class:sidebar-collapsed={collapsed} style="width: {collapsed ? 40 : sidebarWidth}px; min-width: {collapsed ? 40 : sidebarWidth}px;">
 	<div class="sidebar-header">
-		<button class="sidebar-collapse-btn" onclick={() => collapsed = !collapsed}>
-			{collapsed ? "▸" : "◂"}
+		<button class="sidebar-collapse-btn" class:collapsed onclick={() => collapsed = !collapsed}>
+			<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<polyline points="15 18 9 12 15 6"></polyline>
+			</svg>
 		</button>
 		{#if !collapsed}
 			<span class="sidebar-title">Components</span>
@@ -211,7 +213,9 @@
 		>
 			<span class="section-label">{section.label}</span>
 			<span class="section-count">{section.key === "spaces" ? section.items.length + customSpaces.length : section.items.length}</span>
-			<span class="section-chevron">{expandedSection === section.key ? "▾" : "▸"}</span>
+			<svg class="section-chevron" class:expanded={expandedSection === section.key} viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<polyline points="6 9 12 15 18 9"></polyline>
+			</svg>
 		</button>
 
 		{#if expandedSection === section.key}
@@ -429,17 +433,20 @@
 		border-radius: 4px;
 		background: transparent;
 		color: #5c5e6a;
-		font-size: 16px !important;
 		cursor: pointer;
 		flex-shrink: 0;
 		padding: 0;
 		line-height: 1;
-		transition: color 0.15s, background 0.15s;
+		transition: color 0.15s, background 0.15s, transform 0.2s ease;
 	}
 
 	.sidebar-collapse-btn:hover {
 		background: #1e1f2a;
 		color: #a0a2ae;
+	}
+
+	.sidebar-collapse-btn.collapsed {
+		transform: rotate(180deg);
 	}
 
 	.sidebar-header {
@@ -495,13 +502,14 @@
 	}
 
 	.section-chevron {
-		font-size: 14px !important;
 		color: #5c5e6a;
-		line-height: 1;
+		flex-shrink: 0;
+		transition: transform 0.2s ease;
+		transform: rotate(-90deg);
 	}
 
-	.section-toggle.expanded .section-chevron {
-		transform: none;
+	.section-chevron.expanded {
+		transform: rotate(0deg);
 	}
 
 	.section-items {
