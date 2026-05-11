@@ -1,13 +1,12 @@
 <script lang="ts">
 	import MetaTags from "$lib/components/MetaTags.svelte";
-	import { onMount, onDestroy } from "svelte";
+	import { onMount } from "svelte";
 
 	onMount(() => {
 		document.body.style.overflow = "hidden";
-	});
-
-	onDestroy(() => {
-		document.body.style.overflow = "";
+		return () => {
+			document.body.style.overflow = "";
+		};
 	});
 </script>
 
