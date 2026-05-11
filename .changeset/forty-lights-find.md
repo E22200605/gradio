@@ -2,4 +2,4 @@
 "website": minor
 ---
 
-feat:add embedded workflow page to docs
+feat:add embedded workflow to docs
